@@ -1,0 +1,123 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  PENDING
+}
+
+enum OAuthProvider {
+  GITHUB
+}
+
+enum LoginResult {
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id              String                   @id @default(cuid())
+  email           String                   @unique
+  passwordHash    String?
+  name            String
+  status          UserStatus               @default(PENDING)
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  oauthAccounts   OAuthAccount[]
+  sessions        Session[]
+  passwordResets  PasswordResetToken[]
+  emailTokens     EmailVerificationToken[]
+  loginAudits     LoginAudit[]
+
+  @@index([status])
+}
+
+model OAuthAccount {
+  id                String        @id @default(cuid())
+  userId            String
+  provider          OAuthProvider
+  providerAccountId String
+  providerUsername  String?
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id               String   @id @default(cuid())
+  userId           String
+  sessionTokenHash String   @unique
+  expiresAt        DateTime
+  ipAddress        String?
+  userAgent        String?
+  deviceName       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  revokedAt        DateTime?
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model LoginAudit {
+  id        String      @id @default(cuid())
+  userId    String?
+  email     String
+  result    LoginResult
+  ipAddress String?
+  userAgent String?
+  reason    String?
+  createdAt DateTime    @default(now())
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([email])
+  @@index([createdAt])
+}
