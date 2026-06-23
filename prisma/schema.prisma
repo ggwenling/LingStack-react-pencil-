@@ -27,6 +27,27 @@ enum LoginResult {
   FAILED
 }
 
+enum LearningModuleFocus {
+  REACT
+  NEXT
+}
+
+enum AiResponseStyle {
+  CONCISE
+  STANDARD
+  DETAILED
+}
+
+model UserPreference {
+  id                String              @id @default(cuid())
+  userId            String              @unique
+  moduleFocus       LearningModuleFocus @default(REACT)
+  responseStyle     AiResponseStyle     @default(STANDARD)
+  progressReminders Boolean             @default(true)
+  updatedAt         DateTime            @updatedAt
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model User {
   id              String                   @id @default(cuid())
   email           String                   @unique
@@ -42,6 +63,12 @@ model User {
   passwordResets  PasswordResetToken[]
   emailTokens     EmailVerificationToken[]
   loginAudits     LoginAudit[]
+  learningProgress LearningProgress?
+  lessonProgresses LessonProgress[]
+  chatThreads      ChatThread[]
+  learningNotes    LearningNote[]
+  aiTokenUsages    AiTokenUsage[]
+  preference       UserPreference?
 
   @@index([status])
 }
@@ -119,5 +146,158 @@ model LoginAudit {
 
   @@index([userId])
   @@index([email])
+  @@index([createdAt])
+}
+
+enum ExerciseStatus {
+  PENDING
+  ACTIVE
+  PASSED
+}
+
+enum LessonStatus {
+  LOCKED
+  ACTIVE
+  PASSED
+}
+
+model LessonProgress {
+  id               String             @id @default(cuid())
+  userId           String
+  stageKey         String
+  stageIndex       Int
+  lessonKey        String
+  status           LessonStatus       @default(LOCKED)
+  activeExerciseId String?
+  startedAt        DateTime?
+  passedAt         DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises        LearningExercise[]
+
+  @@unique([userId, lessonKey])
+  @@index([userId, status])
+  @@index([userId, stageIndex])
+}
+
+model LearningExercise {
+  id                  String               @id @default(cuid())
+  userId              String
+  lessonProgressId    String
+  stageKey            String
+  lessonKey           String
+  templateId          String
+  templateVersion     Int                  @default(1)
+  title               String
+  requirements        Json
+  rubric              Json
+  starterCode         String?
+  passScore           Int                  @default(70)
+  requiredCriteriaIds Json                 @default("[]")
+  status              ExerciseStatus       @default(PENDING)
+  passedAt            DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  lessonProgress      LessonProgress       @relation(fields: [lessonProgressId], references: [id], onDelete: Cascade)
+  submissions         ExerciseSubmission[]
+
+  @@index([userId, status])
+  @@index([userId, lessonKey])
+}
+
+model ExerciseSubmission {
+  id              String           @id @default(cuid())
+  exerciseId      String
+  userId          String
+  attemptNumber   Int
+  code            String
+  staticResult    Json
+  aiResult        Json
+  criteriaResults Json
+  finalPassed     Boolean
+  score           Int
+  feedback        String
+  model           String?
+  promptVersion   String?
+  createdAt       DateTime         @default(now())
+  exercise        LearningExercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@index([userId, exerciseId, createdAt])
+}
+
+model LearningProgress {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  currentTopic   String   @default("React + Next.js 项目实战学习")
+  summary        String   @default("")
+  masteredTopics String[]
+  weakTopics     String[]
+  nextPlan       String?
+  roadmapSteps   Json     @default("[]")
+  dailyTasks     Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LearningNote {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  excerpt   String   @default("")
+  content   String
+  tags      String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+}
+
+enum LearningModule {
+  REACT
+  NEXT
+}
+
+model ChatThread {
+  id        String          @id @default(cuid())
+  userId    String
+  module    LearningModule  @default(REACT)
+  title     String          @default("新的学习会话")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  deletedAt DateTime?
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+  @@index([userId, deletedAt, updatedAt])
+  @@index([userId, module, deletedAt, updatedAt])
+}
+
+model ChatMessage {
+  id        String     @id @default(cuid())
+  threadId  String
+  role      String
+  content   String
+  createdAt DateTime   @default(now())
+  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+model AiTokenUsage {
+  id               String   @id @default(cuid())
+  userId           String
+  threadId         String?
+  source           String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
   @@index([createdAt])
 }

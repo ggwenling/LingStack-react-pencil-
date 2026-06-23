@@ -1,0 +1,26 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "app/**/{page,layout,loading,error,not-found,route,default}.{ts,tsx}",
+    "app/**/api/handler.ts",
+    "lib/**/*.test.ts"
+  ],
+  "project": ["app/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
+  "ignoreDependencies": [
+    "@prisma/client",
+    "pg",
+    "tw-animate-css",
+    "tailwindcss",
+    "shadcn",
+    "postcss"
+  ],
+  "rules": {
+    "exports": "off",
+    "types": "off",
+    "enumMembers": "off",
+    "files": "error",
+    "dependencies": "error",
+    "devDependencies": "error",
+    "unlisted": "error"
+  }
+}
