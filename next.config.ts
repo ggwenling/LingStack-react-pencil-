@@ -15,6 +15,7 @@ const codemirrorResolveAlias = Object.fromEntries(
 );
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   reactCompiler: true,
   turbopack: {
     resolveAlias: codemirrorResolveAlias,

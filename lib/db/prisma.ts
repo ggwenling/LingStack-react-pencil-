@@ -1,4 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
+import type { PoolConfig } from "pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 
 const PRISMA_CLIENT_RESET_KEY = "__lingstack_prisma_schema__";
@@ -13,6 +14,24 @@ const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
   throw new Error("DATABASE_URL is not configured");
+}
+
+function createPgPoolConfig(): PoolConfig {
+  const rejectUnauthorized =
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+  const runtimeConnectionString = new URL(connectionString!);
+
+  // pg v8 会把 URL 里的 sslmode=require 当成 verify-full，在 Supabase
+  // pooler 上容易触发 self-signed certificate in certificate chain（Vercel/本地均可能）。
+  // SSL 统一由下方 ssl 选项控制，不再依赖连接串里的 sslmode。
+  runtimeConnectionString.searchParams.delete("sslmode");
+
+  return {
+    connectionString: runtimeConnectionString.toString(),
+    max: process.env.NODE_ENV === "production" ? 1 : undefined,
+    // 本地若被代理/杀毒注入自签证书，可在 .env 设 DATABASE_SSL_REJECT_UNAUTHORIZED=false
+    ssl: { rejectUnauthorized },
+  };
 }
 
 if (process.env.NODE_ENV === "development") {
@@ -30,7 +49,7 @@ if (process.env.NODE_ENV === "development") {
   }
 }
 
-const adapter = new PrismaPg({ connectionString });
+const adapter = new PrismaPg(createPgPoolConfig());
 
 function createPrismaClient() {
   return new PrismaClient({
@@ -51,6 +70,4 @@ export function transaction<T>(
   return prisma.$transaction(callback);
 }
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+globalForPrisma.prisma = prisma;

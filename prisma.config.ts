@@ -10,5 +10,7 @@ export default defineConfig({
   },
   datasource: {
     url: process.env["DATABASE_URL"],
+    // migrate deploy 走直连，避免 pooler 中途断连（P1017）
+    directUrl: process.env["DIRECT_URL"],
   },
 });
