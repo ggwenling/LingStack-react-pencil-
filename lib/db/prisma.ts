@@ -26,9 +26,18 @@ function createPgPoolConfig(): PoolConfig {
   // SSL 统一由下方 ssl 选项控制，不再依赖连接串里的 sslmode。
   runtimeConnectionString.searchParams.delete("sslmode");
 
+  // Production defaults to 8: a single Next.js instance can serve concurrent
+  // requests; max 1 serialized DB access and caused queueing under load.
+  const productionPoolMax = Number(process.env.DATABASE_POOL_MAX ?? 8);
+
   return {
     connectionString: runtimeConnectionString.toString(),
-    max: process.env.NODE_ENV === "production" ? 1 : undefined,
+    max:
+      process.env.NODE_ENV === "production"
+        ? Number.isFinite(productionPoolMax) && productionPoolMax > 0
+          ? productionPoolMax
+          : 8
+        : undefined,
     // 本地若被代理/杀毒注入自签证书，可在 .env 设 DATABASE_SSL_REJECT_UNAUTHORIZED=false
     ssl: { rejectUnauthorized },
   };

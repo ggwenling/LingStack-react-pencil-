@@ -6,7 +6,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AiChatPanelHandle } from "@/app/home/components/ai-chat-panel";
 import { ExercisePanel } from "@/app/home/components/exercise/exercise-panel";
+import type { ExerciseSubmissionHistoryItem } from "@/lib/learning/exercise-panel-data";
 import { HomeRouteLoading } from "@/app/home/components/route-state";
+import type { CurrentExerciseView } from "@/lib/learning/exercise-service";
 import {
   persistExercisePanelCollapsed,
   readExercisePanelCollapsed,
@@ -28,6 +30,8 @@ type AiExerciseWorkspaceProps = {
   title: string;
   userName?: string | null;
   initialMessages?: UIMessage[];
+  initialExercise?: CurrentExerciseView | null;
+  initialSubmissions?: ExerciseSubmissionHistoryItem[];
 };
 
 export function AiExerciseWorkspace({
@@ -35,6 +39,8 @@ export function AiExerciseWorkspace({
   title,
   userName,
   initialMessages = [],
+  initialExercise,
+  initialSubmissions,
 }: AiExerciseWorkspaceProps) {
   const [exerciseCollapsed, setExerciseCollapsed] = useState(false);
   const chatPanelRef = useRef<AiChatPanelHandle>(null);
@@ -43,6 +49,7 @@ export function AiExerciseWorkspace({
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync client-only session preference after hydration
     setExerciseCollapsed(readExercisePanelCollapsed());
   }, []);
 
@@ -75,6 +82,8 @@ export function AiExerciseWorkspace({
           className="h-full min-h-0"
           threadId={threadId}
           onChatFollowUp={handleChatFollowUp}
+          initialExercise={initialExercise}
+          initialSubmissions={initialSubmissions}
         />
       </div>
 

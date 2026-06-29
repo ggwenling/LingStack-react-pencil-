@@ -4,7 +4,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createUserSession, setSessionCookie } from "@/lib/auth/session";
 
+import { fetchWithTimeout } from "@/lib/http/fetch-with-timeout";
+
 const GITHUB_STATE_COOKIE = "github_oauth_state";
+const GITHUB_FETCH_TIMEOUT_MS = 10_000;
 
 type GitHubTokenResponse = {
   access_token?: string;
@@ -59,19 +62,23 @@ async function exchangeCodeForToken(request: NextRequest, code: string) {
     throw new Error("GitHub OAuth is not configured");
   }
 
-  const response = await fetch("https://github.com/login/oauth/access_token", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
+  const response = await fetchWithTimeout(
+    "https://github.com/login/oauth/access_token",
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: `${getAppUrl(request)}/api/auth/github/callback`,
+      }),
     },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      redirect_uri: `${getAppUrl(request)}/api/auth/github/callback`,
-    }),
-  });
+    GITHUB_FETCH_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     throw new Error("GitHub token exchange failed");
@@ -87,12 +94,16 @@ async function exchangeCodeForToken(request: NextRequest, code: string) {
 }
 
 async function fetchGitHubUser(accessToken: string) {
-  const response = await fetch("https://api.github.com/user", {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/vnd.github+json",
+  const response = await fetchWithTimeout(
+    "https://api.github.com/user",
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+      },
     },
-  });
+    GITHUB_FETCH_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     throw new Error("GitHub user request failed");
@@ -102,12 +113,16 @@ async function fetchGitHubUser(accessToken: string) {
 }
 
 async function fetchVerifiedPrimaryEmail(accessToken: string) {
-  const response = await fetch("https://api.github.com/user/emails", {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/vnd.github+json",
+  const response = await fetchWithTimeout(
+    "https://api.github.com/user/emails",
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+      },
     },
-  });
+    GITHUB_FETCH_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     throw new Error("GitHub email request failed");

@@ -1,4 +1,4 @@
-import { createDeepSeek } from "@ai-sdk/deepseek";
+import { gradingDeepseek } from "@/lib/ai/deepseek-client";
 import { generateObject } from "ai";
 
 import {
@@ -14,10 +14,6 @@ import {
   GRADING_PROMPT_VERSION,
 } from "./grading-prompts";
 import { runStaticChecksForRubric } from "./static-checks";
-
-const deepseek = createDeepSeek({
-  apiKey: process.env.DEEPSEEK_API_KEY,
-});
 
 const GRADING_MODEL = process.env.DEEPSEEK_GRADING_MODEL ?? "deepseek-chat";
 
@@ -124,7 +120,7 @@ export function runStaticChecks(
 
 export async function gradeWithAi(code: string, template: ExerciseTemplate) {
   const { object, usage } = await generateObject({
-    model: deepseek(GRADING_MODEL),
+    model: gradingDeepseek(GRADING_MODEL),
     schema: gradingResultSchema,
     temperature: 0.1,
     system: buildGradingSystemPrompt(),

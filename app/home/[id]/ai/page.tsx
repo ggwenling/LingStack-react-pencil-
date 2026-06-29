@@ -4,6 +4,11 @@ import { notFound, redirect } from "next/navigation";
 import { AiExerciseWorkspace } from "@/app/home/components/ai-exercise-workspace";
 import { getCurrentUser } from "@/lib/auth/session";
 import { AppError } from "@/lib/errors/app-error";
+import { serializeExerciseSubmissions } from "@/lib/learning/exercise-panel-data";
+import {
+  getCurrentExerciseView,
+  getExerciseSubmissionsView,
+} from "@/lib/learning/exercise-service";
 import { getThreadMessagesForPage } from "@/lib/services/chat-service";
 
 type AiPageProps = {
@@ -36,13 +41,22 @@ export default async function AiPage({ params }: AiPageProps) {
     redirect("/login");
   }
 
-  const thread = await getThreadMessagesForPage(user.id, id).catch((error) => {
-    if (error instanceof AppError && error.code === "NOT_FOUND") {
-      notFound();
-    }
+  const [thread, exercise] = await Promise.all([
+    getThreadMessagesForPage(user.id, id).catch((error) => {
+      if (error instanceof AppError && error.code === "NOT_FOUND") {
+        notFound();
+      }
 
-    throw error;
-  });
+      throw error;
+    }),
+    getCurrentExerciseView(user.id),
+  ]);
+
+  const initialSubmissions = exercise
+    ? serializeExerciseSubmissions(
+        (await getExerciseSubmissionsView(user.id, exercise.exerciseId)) ?? [],
+      )
+    : [];
 
   return (
     <AiExerciseWorkspace
@@ -50,6 +64,8 @@ export default async function AiPage({ params }: AiPageProps) {
       title={thread.title}
       userName={user.name}
       initialMessages={toInitialMessages(thread.messages)}
+      initialExercise={exercise}
+      initialSubmissions={initialSubmissions}
     />
   );
 }

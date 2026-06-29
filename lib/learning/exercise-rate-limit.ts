@@ -10,14 +10,16 @@ const MAX_SUBMISSIONS_PER_DAY = 30;
 export async function assertExerciseRateLimit(
   userId: string,
   exerciseId: string,
+  exercise?: Awaited<ReturnType<typeof findExerciseByIdForUser>>,
 ) {
-  const exercise = await findExerciseByIdForUser(userId, exerciseId);
+  const resolved =
+    exercise ?? (await findExerciseByIdForUser(userId, exerciseId));
 
-  if (!exercise) {
+  if (!resolved) {
     throw new AppError("NOT_FOUND", "练习不存在");
   }
 
-  const latestSubmission = exercise.submissions[0];
+  const latestSubmission = resolved.submissions[0];
 
   if (latestSubmission) {
     const elapsed = Date.now() - latestSubmission.createdAt.getTime();

@@ -123,12 +123,32 @@ export function findLatestThreadByModule(userId: string, module: "REACT" | "NEXT
   });
 }
 
-export function countThreadMessages(threadId: string) {
-  return prisma.chatMessage.count({
-    where: {
-      threadId,
-    },
-  });
+export function hasThreadMessages(threadId: string) {
+  return prisma.chatMessage
+    .findFirst({
+      where: {
+        threadId,
+      },
+      select: {
+        id: true,
+      },
+    })
+    .then((message) => message !== null);
+}
+
+export function findUserStudyDays(userId: string, since: Date) {
+  return prisma.$queryRaw<Array<{ day: Date }>>`
+    SELECT DISTINCT (
+      DATE_TRUNC('day', m."createdAt" AT TIME ZONE 'Asia/Hong_Kong') + INTERVAL '12 hours'
+    ) AS day
+    FROM "ChatMessage" m
+    INNER JOIN "ChatThread" t ON t.id = m."threadId"
+    WHERE t."userId" = ${userId}
+      AND t."deletedAt" IS NULL
+      AND m.role = 'user'
+      AND m."createdAt" >= ${since}
+    ORDER BY day DESC
+  `;
 }
 
 export function countUserMessagesSince(threadId: string, since: Date) {

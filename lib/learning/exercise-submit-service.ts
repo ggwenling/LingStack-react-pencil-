@@ -82,13 +82,13 @@ export async function submitExerciseForUser(
   }
 
   try {
-    await assertExerciseRateLimit(userId, exerciseId);
-
     const exercise = await findExerciseByIdForUser(userId, exerciseId);
 
     if (!exercise?.lessonProgress) {
       throw new AppError("NOT_FOUND", "练习不存在");
     }
+
+    await assertExerciseRateLimit(userId, exerciseId, exercise);
 
     assertExerciseSubmittable({
       exercise,

@@ -2,46 +2,37 @@ import {
   convertToModelMessages,
   generateObject,
   streamText,
-  type UIMessage,
 } from "ai";
-import { createDeepSeek } from "@ai-sdk/deepseek";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { getCurrentUser } from "@/lib/auth/session";
-import { getChatExerciseContext } from "@/lib/learning/chat-exercise-context";
-import { recordAiTokenUsage } from "@/lib/services/ai-token-service";
 import {
   buildProgressExtractionPrompt,
   buildSystemPrompt,
   DEFAULT_LEARNING_TOPIC,
   truncateChatMessages,
 } from "../prompts/learning-prompts";
-import { prisma } from "@/lib/prisma";
+import { deepseek } from "@/lib/ai/deepseek-client";
+import { getCurrentUser } from "@/lib/auth/session";
+import { getChatExerciseContext } from "@/lib/learning/chat-exercise-context";
+import {
+  findLearningProgress,
+  upsertLearningProgress,
+} from "@/lib/repositories/learning-progress-repository";
+import { findRecentMessages } from "@/lib/repositories/chat-repository";
+import { recordAiTokenUsage } from "@/lib/services/ai-token-service";
+import {
+  getAuthorizedThread,
+  getTextFromMessage,
+  saveAssistantMessage,
+  saveUserMessage,
+} from "@/lib/services/chat-service";
 
-export const maxDuration = 30;
-
-const DEFAULT_THREAD_TITLE = "新的学习会话";
-const DEFAULT_REACT_THREAD_TITLE = "新的 React 学习会话";
-const DEFAULT_NEXT_THREAD_TITLE = "新的 Next.js 学习会话";
-const LEGACY_DEFAULT_THREAD_TITLES = [
-  DEFAULT_THREAD_TITLE,
-  "React + Next.js 学习会话",
-  DEFAULT_REACT_THREAD_TITLE,
-  DEFAULT_NEXT_THREAD_TITLE,
-  "鏂扮殑瀛︿範浼氳瘽",
-  "React + Next.js 瀛︿範浼氳瘽",
-  "鏂扮殑 React 瀛︿範浼氳瘽",
-  "鏂扮殑 Next.js 瀛︿範浼氳瘽",
-];
+export const maxDuration = 60;
 
 const CHAT_MODEL = "deepseek-v4-flash";
 const PROGRESS_MODEL = "deepseek-v4-flash";
-
-const deepseek = createDeepSeek({
-  apiKey: process.env.DEEPSEEK_API_KEY,
-  baseURL: process.env.DEEPSEEK_BASE_URL,
-});
 
 const chatProgressSchema = z.object({
   summary: z.string(),
@@ -66,143 +57,13 @@ const chatRequestSchema = z.object({
     .min(1),
 });
 
-function getTextFromMessage(message: UIMessage) {
-  return message.parts
-    .map((part) => (part.type === "text" ? part.text : ""))
-    .join("")
-    .trim();
-}
-
-async function getOrCreateLatestThread(userId: string) {
-  const latestThread = await prisma.chatThread.findFirst({
-    where: {
-      userId,
-      deletedAt: null,
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-  });
-
-  if (latestThread) {
-    return latestThread;
-  }
-
-  return prisma.chatThread.create({
-    data: {
-      userId,
-      title: "React + Next.js 学习会话",
-    },
-  });
-}
-
-async function getAuthorizedThread(userId: string, threadId?: string) {
-  if (!threadId) {
-    return getOrCreateLatestThread(userId);
-  }
-
-  return prisma.chatThread.findFirst({
-    where: {
-      id: threadId,
-      userId,
-      deletedAt: null,
-    },
-  });
-}
-
-function createThreadTitle(content: string) {
-  const compact = content.replace(/\s+/g, " ").trim();
-
-  if (compact.length <= 24) {
-    return compact;
-  }
-
-  return `${compact.slice(0, 24)}...`;
-}
-
-async function saveUserMessage(
-  thread: { id: string; title: string },
-  messages: UIMessage[],
-) {
-  const lastUserMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "user");
-  const content = lastUserMessage ? getTextFromMessage(lastUserMessage) : "";
-
-  if (!content) {
-    return;
-  }
-
-  const messageCount = await prisma.chatMessage.count({
-    where: {
-      threadId: thread.id,
-    },
-  });
-
-  await prisma.chatMessage.create({
-    data: {
-      threadId: thread.id,
-      role: "user",
-      content,
-    },
-  });
-
-  const shouldAutoTitle =
-    messageCount === 0 && LEGACY_DEFAULT_THREAD_TITLES.includes(thread.title);
-
-  await prisma.chatThread.update({
-    where: {
-      id: thread.id,
-    },
-    data: {
-      ...(shouldAutoTitle ? { title: createThreadTitle(content) } : {}),
-      updatedAt: new Date(),
-    },
-  });
-}
-
-async function saveAssistantMessage(threadId: string, content: string) {
-  if (!content.trim()) {
-    return;
-  }
-
-  await prisma.chatMessage.create({
-    data: {
-      threadId,
-      role: "assistant",
-      content,
-    },
-  });
-
-  await prisma.chatThread.update({
-    where: {
-      id: threadId,
-    },
-    data: {
-      updatedAt: new Date(),
-    },
-  });
-}
-
 async function updateLearningProgress(
   userId: string,
   thread: { id: string; module: "REACT" | "NEXT" },
 ) {
   const [messages, progress] = await Promise.all([
-    prisma.chatMessage.findMany({
-      where: {
-        threadId: thread.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 10,
-    }),
-    prisma.learningProgress.findUnique({
-      where: {
-        userId,
-      },
-    }),
+    findRecentMessages(thread.id, 10),
+    findLearningProgress(userId),
   ]);
 
   const conversation = messages
@@ -229,24 +90,15 @@ async function updateLearningProgress(
     usage,
   });
 
-  await prisma.learningProgress.upsert({
-    where: {
-      userId,
-    },
-    update: {
-      summary: object.summary,
-      weakTopics: object.weakTopics,
-    },
-    create: {
-      userId,
-      currentTopic: progress?.currentTopic || DEFAULT_LEARNING_TOPIC,
-      summary: object.summary,
-      masteredTopics: progress?.masteredTopics ?? [],
-      weakTopics: object.weakTopics,
-      nextPlan: progress?.nextPlan ?? null,
-      roadmapSteps: progress?.roadmapSteps ?? [],
-      dailyTasks: progress?.dailyTasks ?? [],
-    },
+  await upsertLearningProgress({
+    userId,
+    currentTopic: progress?.currentTopic || DEFAULT_LEARNING_TOPIC,
+    summary: object.summary,
+    masteredTopics: progress?.masteredTopics ?? [],
+    weakTopics: object.weakTopics,
+    nextPlan: progress?.nextPlan ?? null,
+    roadmapSteps: progress?.roadmapSteps ?? [],
+    dailyTasks: progress?.dailyTasks ?? [],
   });
 }
 
@@ -289,11 +141,7 @@ export async function POST(req: Request) {
 
   const [thread, progress, exerciseContext] = await Promise.all([
     getAuthorizedThread(user.id, threadId),
-    prisma.learningProgress.findUnique({
-      where: {
-        userId: user.id,
-      },
-    }),
+    findLearningProgress(user.id),
     getChatExerciseContext(user.id, { threadId }),
   ]);
 
@@ -328,8 +176,15 @@ export async function POST(req: Request) {
           source: "chat",
           usage,
         });
-        await updateLearningProgress(user.id, thread);
-        revalidateLearningSurfaces(thread.id);
+
+        after(async () => {
+          try {
+            await updateLearningProgress(user.id, thread);
+            revalidateLearningSurfaces(thread.id);
+          } catch (error) {
+            console.error("Failed to update learning progress", error);
+          }
+        });
       } catch (error) {
         console.error("Failed to persist chat memory", error);
       }

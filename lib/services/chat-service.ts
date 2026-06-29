@@ -2,7 +2,7 @@ import type { UIMessage } from "ai";
 
 import { AppError } from "@/lib/errors/app-error";
 import {
-  countThreadMessages,
+  hasThreadMessages,
   createChatMessage,
   createThread,
   findLatestThread,
@@ -145,7 +145,7 @@ export async function saveUserMessage(
     throw new AppError("BAD_REQUEST", "请输入聊天内容");
   }
 
-  const messageCount = await countThreadMessages(thread.id);
+  const isFirstMessage = !(await hasThreadMessages(thread.id));
 
   await createChatMessage({
     threadId: thread.id,
@@ -154,7 +154,7 @@ export async function saveUserMessage(
   });
 
   const shouldAutoTitle =
-    messageCount === 0 && LEGACY_DEFAULT_THREAD_TITLES.includes(thread.title);
+    isFirstMessage && LEGACY_DEFAULT_THREAD_TITLES.includes(thread.title);
 
   await touchThread(
     thread.id,

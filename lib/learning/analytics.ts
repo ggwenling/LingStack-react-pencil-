@@ -9,6 +9,7 @@ import {
   buildRoadmapMastery,
   type RoadmapMasteryItem,
 } from "@/lib/learning/roadmap-progress";
+import { shouldSkipProgressCacheUpsert } from "@/lib/learning/progress-cache-policy";
 import { mapWeakPoints } from "@/lib/learning/skill-tracks";
 import {
   buildRoadmapStepsFromLessons,
@@ -77,7 +78,14 @@ function buildWeeklySuggestion(input: {
 
 export async function getAnalyticsView(userId: string): Promise<AnalyticsView> {
   const lessonRecords = await getLessonProgressState(userId);
-  await upsertLearningProgressCache(userId);
+
+  const existingProgress = await prisma.learningProgress.findUnique({
+    where: { userId },
+  });
+
+  if (!shouldSkipProgressCacheUpsert(lessonRecords, existingProgress)) {
+    await upsertLearningProgressCache(userId);
+  }
 
   const [
     token,

@@ -9,7 +9,6 @@ import { getLessonProgressState } from "./exercise-service";
 import { formatRelativeTime } from "./format-relative-time";
 import {
   parseDailyTasks,
-  parseRoadmapSteps,
   type HomeDashboardView,
 } from "./home-dashboard-types";
 import {
@@ -20,12 +19,13 @@ import {
   hasLessonLearningActivity,
   pickPrimaryEntry,
 } from "./learning-metrics";
+import { shouldSkipProgressCacheUpsert } from "./progress-cache-policy";
+import { findUserStudyDays } from "@/lib/repositories/chat-repository";
 import {
   buildDailyTasksFromLessons,
   buildRoadmapStepsFromLessons,
   upsertLearningProgressCache,
 } from "./progress-aggregator";
-import type { LessonWithExercises } from "./progress-aggregator-pure";
 import { resolveRoadmapProgress } from "./roadmap-progress";
 import { calculateStreakDays } from "./study-streak";
 
@@ -157,28 +157,6 @@ function resolveTasks(
   return buildDailyTasksFromLessons(lessonRecords);
 }
 
-function shouldSkipProgressCacheUpsert(
-  lessonRecords: LessonWithExercises[],
-  progress: {
-    roadmapSteps: unknown;
-    dailyTasks: unknown;
-  } | null,
-) {
-  if (lessonRecords.length === 0 || !progress) {
-    return false;
-  }
-
-  const roadmapParsed = parseRoadmapSteps(progress.roadmapSteps);
-  const tasksParsed = parseDailyTasks(progress.dailyTasks);
-
-  return (
-    roadmapParsed.success &&
-    tasksParsed.success &&
-    roadmapParsed.data.length > 0 &&
-    tasksParsed.data.length > 0
-  );
-}
-
 export async function getHomeDashboardView(
   userId: string,
 ): Promise<HomeDashboardView> {
@@ -263,21 +241,7 @@ export async function getHomeDashboardView(
         },
       },
     }),
-    prisma.chatMessage.findMany({
-      where: {
-        thread: {
-          userId,
-          deletedAt: null,
-        },
-        role: "user",
-        createdAt: {
-          gte: ninetyDaysAgo,
-        },
-      },
-      select: {
-        createdAt: true,
-      },
-    }),
+    findUserStudyDays(userId, ninetyDaysAgo),
   ]);
 
   const masteredTopics = progress?.masteredTopics ?? [];
@@ -304,9 +268,7 @@ export async function getHomeDashboardView(
   const passedLessonCount = lessonRecords.filter(
     (lesson) => lesson.status === "PASSED",
   ).length;
-  const streakDays = calculateStreakDays(
-    studyDates.map((item) => item.createdAt),
-  );
+  const streakDays = calculateStreakDays(studyDates.map((item) => item.day));
   const totalHours = estimateStudyHoursFromMessageCount(userMessageCount);
 
   const masteredDelta = progress

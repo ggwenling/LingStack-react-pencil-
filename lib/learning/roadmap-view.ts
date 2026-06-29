@@ -12,6 +12,7 @@ import {
   buildRoadmapStepsFromLessons,
   upsertLearningProgressCache,
 } from "./progress-aggregator";
+import { shouldSkipProgressCacheUpsert } from "./progress-cache-policy";
 import { parseDailyTasks } from "./home-dashboard-types";
 import type {
   RoadmapLessonStatus,
@@ -143,7 +144,14 @@ export async function getRoadmapPageView(
   userId: string,
 ): Promise<RoadmapPageView> {
   const lessons = await getLessonProgressState(userId);
-  await upsertLearningProgressCache(userId);
+
+  const existingProgress = await prisma.learningProgress.findUnique({
+    where: { userId },
+  });
+
+  if (!shouldSkipProgressCacheUpsert(lessons, existingProgress)) {
+    await upsertLearningProgressCache(userId);
+  }
 
   const progress = await prisma.learningProgress.findUnique({
     where: { userId },

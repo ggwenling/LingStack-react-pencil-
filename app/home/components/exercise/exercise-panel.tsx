@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 
 import { ExerciseCodemirrorEditor } from "./exercise-codemirror-editor";
+import type { CurrentExerciseView } from "@/lib/learning/exercise-service";
+import type { ExerciseSubmissionHistoryItem } from "@/lib/learning/exercise-panel-data";
 import { cn } from "@/lib/utils";
 
 type ExerciseData = {
@@ -63,7 +65,24 @@ type ExercisePanelProps = {
   className?: string;
   threadId?: string;
   onChatFollowUp?: (message: { messageId: string; content: string }) => void;
+  initialExercise?: CurrentExerciseView | null;
+  initialSubmissions?: ExerciseSubmissionHistoryItem[];
 };
+
+function toExerciseData(exercise: CurrentExerciseView): ExerciseData {
+  return {
+    exerciseId: exercise.exerciseId,
+    lessonKey: exercise.lessonKey,
+    lessonTitle: exercise.lessonTitle,
+    title: exercise.title,
+    description: exercise.description,
+    requirements: exercise.requirements,
+    starterCode: exercise.starterCode,
+    status: exercise.status,
+    templateId: exercise.templateId,
+    passScore: exercise.passScore,
+  };
+}
 
 export function ExercisePanel({
   collapsed = false,
@@ -71,15 +90,22 @@ export function ExercisePanel({
   className,
   threadId,
   onChatFollowUp,
+  initialExercise,
+  initialSubmissions,
 }: ExercisePanelProps) {
   const router = useRouter();
-  const [exercise, setExercise] = useState<ExerciseData | null>(null);
-  const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(true);
+  const hasInitialExercise = initialExercise !== undefined;
+  const [exercise, setExercise] = useState<ExerciseData | null>(
+    initialExercise ? toExerciseData(initialExercise) : (initialExercise ?? null),
+  );
+  const [code, setCode] = useState(initialExercise?.starterCode ?? "");
+  const [loading, setLoading] = useState(!hasInitialExercise);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SubmitResult | null>(null);
-  const [history, setHistory] = useState<SubmissionHistoryItem[]>([]);
+  const [history, setHistory] = useState<SubmissionHistoryItem[]>(
+    initialSubmissions ?? [],
+  );
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const loadHistory = useCallback(async (exerciseId: string) => {
@@ -122,7 +148,9 @@ export function ExercisePanel({
 
       setExercise(data);
       setCode(data.starterCode);
-      await loadHistory(data.exerciseId);
+      setLoading(false);
+      void loadHistory(data.exerciseId);
+      return;
     } catch (loadError) {
       setError(
         loadError instanceof Error ? loadError.message : "加载练习失败",
@@ -133,10 +161,14 @@ export function ExercisePanel({
   }, [loadHistory]);
 
   useEffect(() => {
+    if (hasInitialExercise) {
+      return;
+    }
+
     // Initial client fetch on mount; setState runs after await, not synchronously in the effect body.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch on mount
     void loadExercise();
-  }, [loadExercise]);
+  }, [hasInitialExercise, loadExercise]);
 
   async function handleSubmit() {
     if (!exercise || submitting) {
