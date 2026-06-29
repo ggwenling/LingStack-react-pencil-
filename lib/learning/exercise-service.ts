@@ -80,7 +80,15 @@ function toExerciseView(
   };
 }
 
-function reviveDate(value: string | Date | null) {
+function reviveRequiredDate(value: string | Date): Date {
+  return typeof value === "string" ? new Date(value) : value;
+}
+
+function reviveOptionalDate(value: string | Date | null): Date | null {
+  if (value === null) {
+    return null;
+  }
+
   return typeof value === "string" ? new Date(value) : value;
 }
 
@@ -89,14 +97,14 @@ function reviveLessonProgressState(
 ): LessonProgressState {
   return lessons.map((lesson) => ({
     ...lesson,
-    startedAt: reviveDate(lesson.startedAt),
-    passedAt: reviveDate(lesson.passedAt),
-    createdAt: reviveDate(lesson.createdAt),
-    updatedAt: reviveDate(lesson.updatedAt),
+    startedAt: reviveOptionalDate(lesson.startedAt),
+    passedAt: reviveOptionalDate(lesson.passedAt),
+    createdAt: reviveRequiredDate(lesson.createdAt),
+    updatedAt: reviveRequiredDate(lesson.updatedAt),
     exercises: lesson.exercises.map((exercise) => ({
       ...exercise,
-      createdAt: reviveDate(exercise.createdAt),
-      updatedAt: reviveDate(exercise.updatedAt),
+      createdAt: reviveRequiredDate(exercise.createdAt),
+      updatedAt: reviveRequiredDate(exercise.updatedAt),
     })),
   }));
 }

@@ -7,7 +7,7 @@ export function fetchWithTimeout(
 ) {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const signal =
-    init?.signal !== undefined
+    init?.signal != null
       ? AbortSignal.any([init.signal, timeoutSignal])
       : timeoutSignal;
 
