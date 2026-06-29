@@ -16,7 +16,7 @@ type HomeShellProps = {
   threads: Array<{
     id: string;
     title: string;
-    updatedAt: Date;
+    updatedAt: string | Date;
     module: "REACT" | "NEXT";
   }>;
   children: ReactNode;

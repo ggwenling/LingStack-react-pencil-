@@ -41,12 +41,18 @@ type LearningModuleListProps = {
   threads: Array<{
     id: string;
     title: string;
-    updatedAt: Date;
+    updatedAt: string | Date;
     module: "REACT" | "NEXT";
   }>;
 };
 
-function formatThreadTime(date: Date) {
+function formatThreadTime(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+
   return new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",

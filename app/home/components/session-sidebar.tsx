@@ -11,7 +11,7 @@ type SessionSidebarProps = {
   threads: Array<{
     id: string;
     title: string;
-    updatedAt: Date;
+    updatedAt: string | Date;
     module: "REACT" | "NEXT";
   }>;
 };
