@@ -1,12 +1,48 @@
 import { prisma } from "@/lib/db/prisma";
 
-export function listNotesForUser(userId: string) {
+const NOTE_LIST_SELECT = {
+  id: true,
+  title: true,
+  excerpt: true,
+  tags: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+export const DEFAULT_NOTE_PAGE_SIZE = 30;
+
+export function listNotesForUser(
+  userId: string,
+  options: { skip?: number; take?: number } = {},
+) {
+  const { skip = 0, take = DEFAULT_NOTE_PAGE_SIZE } = options;
+
   return prisma.learningNote.findMany({
     where: {
       userId,
     },
     orderBy: {
       updatedAt: "desc",
+    },
+    skip,
+    take,
+    select: NOTE_LIST_SELECT,
+  });
+}
+
+export function countNotesForUser(userId: string) {
+  return prisma.learningNote.count({
+    where: {
+      userId,
+    },
+  });
+}
+
+export function findNoteForUser(userId: string, id: string) {
+  return prisma.learningNote.findFirst({
+    where: {
+      id,
+      userId,
     },
   });
 }

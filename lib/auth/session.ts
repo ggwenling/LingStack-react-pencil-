@@ -179,49 +179,19 @@ export const getCurrentSession = cache(async function getCurrentSession() {
     return null;
   }
 
-  try {
-    const session = await prisma.session.findUnique({
-      where: {
-        sessionTokenHash: hashToken(token),
-      },
-      select: {
-        id: true,
-        revokedAt: true,
-        expiresAt: true,
-        ipAddress: true,
-        userAgent: true,
-        createdAt: true,
-        user: {
-          select: {
-            status: true,
-          },
-        },
-      },
-    });
+  const session = await getSessionFromToken(token);
 
-    if (
-      !session ||
-      session.revokedAt ||
-      session.expiresAt <= new Date() ||
-      session.user.status !== "ACTIVE"
-    ) {
-      return null;
-    }
-
-    return {
-      id: session.id,
-      ipAddress: session.ipAddress,
-      userAgent: session.userAgent,
-      createdAt: session.createdAt,
-      expiresAt: session.expiresAt,
-    };
-  } catch (error) {
-    if (isDatabaseUnavailable(error)) {
-      return null;
-    }
-
-    throw error;
+  if (!session) {
+    return null;
   }
+
+  return {
+    id: session.id,
+    ipAddress: session.ipAddress,
+    userAgent: session.userAgent,
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt,
+  };
 });
 
 export async function revokeCurrentSession() {

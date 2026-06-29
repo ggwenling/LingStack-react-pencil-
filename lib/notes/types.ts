@@ -16,6 +16,8 @@ export type LearningNote = {
   updatedAt: string;
 };
 
+export type LearningNoteSummary = Omit<LearningNote, "content">;
+
 export const NOTE_TAGS: NoteTag[] = [
   "REACT",
   "NEXTJS",

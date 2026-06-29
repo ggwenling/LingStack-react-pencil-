@@ -8,6 +8,8 @@ import {
   createLearningNote,
   createLearningNoteFromMarkdown,
   deleteLearningNote,
+  getLearningNoteContent,
+  getLearningNotePage,
   updateLearningNote,
 } from "@/lib/services/note-service";
 import type { NoteTag } from "@/lib/notes/types";
@@ -44,6 +46,35 @@ function actionFailure(error: AppError): ActionFailure {
   return {
     ok: false,
     message: error.message,
+  };
+}
+
+export async function fetchNoteContent(id: string) {
+  const user = await requireUser();
+
+  try {
+    const note = await getLearningNoteContent(user.id, id);
+    return {
+      ok: true as const,
+      note,
+    };
+  } catch (error) {
+    if (error instanceof AppError) {
+      return actionFailure(error);
+    }
+
+    throw error;
+  }
+}
+
+export async function loadMoreNotes(page: number) {
+  const user = await requireUser();
+  const result = await getLearningNotePage(user.id, page);
+
+  return {
+    ok: true as const,
+    notes: result.notes,
+    hasMore: result.hasMore,
   };
 }
 

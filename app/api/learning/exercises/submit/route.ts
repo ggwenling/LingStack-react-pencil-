@@ -1,1 +1,1 @@
-export { POST } from "./api/handler";
+export { maxDuration, POST } from "./api/handler";

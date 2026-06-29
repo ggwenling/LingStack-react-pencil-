@@ -75,8 +75,20 @@ export function AiChatPanel({
     messages: initialMessages,
     transport: new DefaultChatTransport({
       api: "/api/chat",
-      body: {
-        threadId,
+      prepareSendMessagesRequest: ({ messages, trigger, body }) => {
+        const lastUserMessage = [...messages]
+          .reverse()
+          .find((message) => message.role === "user");
+
+        return {
+          body: {
+            ...body,
+            threadId,
+            trigger,
+            lastUserMessage:
+              trigger === "submit-message" ? lastUserMessage : undefined,
+          },
+        };
       },
     }),
   });

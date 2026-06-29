@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requirePageUser } from "@/lib/auth/require-user";
@@ -8,6 +7,7 @@ import { AppError } from "@/lib/errors/app-error";
 import {
   createModuleLearningThread,
   deleteLearningThread,
+  invalidateChatLearningCaches,
   renameLearningThread,
 } from "@/lib/services/chat-service";
 import { learningModuleIdSchema, renameThreadSchema } from "@/lib/validation/chat";
@@ -18,7 +18,7 @@ export async function createModuleLearningChat(module: LearningModuleId) {
   const parsedModule = learningModuleIdSchema.parse(module);
   const thread = await createModuleLearningThread(user.id, parsedModule);
 
-  revalidatePath("/home", "layout");
+  await invalidateChatLearningCaches(user.id);
   redirect(`/home/${thread.id}/ai`);
 }
 
@@ -32,7 +32,7 @@ export async function deleteLearningChat(threadId: string) {
   try {
     const latestThread = await deleteLearningThread(user.id, threadId);
 
-    revalidatePath("/home", "layout");
+    await invalidateChatLearningCaches(user.id);
     redirect(latestThread ? `/home/${latestThread.id}/ai` : "/home");
   } catch (error) {
     if (error instanceof AppError && error.code === "NOT_FOUND") {
@@ -58,8 +58,7 @@ export async function renameLearningChat(threadId: string, title: string) {
       parsed.data.title,
     );
 
-    revalidatePath("/home", "layout");
-    revalidatePath(`/home/${threadId}/ai`);
+    await invalidateChatLearningCaches(user.id);
 
     return nextTitle;
   } catch (error) {

@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache";
+
 import { transaction } from "@/lib/db/prisma";
 import {
   findActiveExercise,
@@ -7,7 +9,13 @@ import {
   hasLessonProgressRecords,
 } from "@/lib/repositories/exercise-repository";
 import type { LearningExercise } from "@/lib/generated/prisma/client";
+import {
+  learningDataCacheKey,
+  readLearningDataCache,
+  writeLearningDataCache,
+} from "@/lib/redis/learning-data-cache";
 
+import { lessonProgressTag } from "./cache-tags";
 import { getLessonByKey } from "./catalog-index";
 import { getExerciseTemplate } from "./exercise-catalog";
 import {
@@ -15,6 +23,28 @@ import {
   getFirstMvpLessonKey,
 } from "./progress-state-machine";
 import type { ExerciseRubricItem } from "./exercise-catalog";
+
+type LessonProgressState = Awaited<ReturnType<typeof findLessonProgresses>>;
+type CachedLessonProgressState = Array<
+  Omit<
+    LessonProgressState[number],
+    "startedAt" | "passedAt" | "createdAt" | "updatedAt" | "exercises"
+  > & {
+    startedAt: string | Date | null;
+    passedAt: string | Date | null;
+    createdAt: string | Date;
+    updatedAt: string | Date;
+    exercises: Array<
+      Omit<
+        LessonProgressState[number]["exercises"][number],
+        "createdAt" | "updatedAt"
+      > & {
+        createdAt: string | Date;
+        updatedAt: string | Date;
+      }
+    >;
+  }
+>;
 
 export type CurrentExerciseView = {
   exerciseId: string;
@@ -48,6 +78,27 @@ function toExerciseView(
     passScore: exercise.passScore,
     rubric: exercise.rubric as ExerciseRubricItem[],
   };
+}
+
+function reviveDate(value: string | Date | null) {
+  return typeof value === "string" ? new Date(value) : value;
+}
+
+function reviveLessonProgressState(
+  lessons: CachedLessonProgressState,
+): LessonProgressState {
+  return lessons.map((lesson) => ({
+    ...lesson,
+    startedAt: reviveDate(lesson.startedAt),
+    passedAt: reviveDate(lesson.passedAt),
+    createdAt: reviveDate(lesson.createdAt),
+    updatedAt: reviveDate(lesson.updatedAt),
+    exercises: lesson.exercises.map((exercise) => ({
+      ...exercise,
+      createdAt: reviveDate(exercise.createdAt),
+      updatedAt: reviveDate(exercise.updatedAt),
+    })),
+  }));
 }
 
 export async function getOrCreateCurrentExercise(userId: string) {
@@ -94,14 +145,35 @@ export async function getCurrentExerciseView(userId: string) {
   return getOrCreateCurrentExercise(userId);
 }
 
-export async function getLessonProgressState(userId: string) {
+async function loadLessonProgressState(userId: string) {
   const hasRecords = await hasLessonProgressRecords(userId);
 
   if (!hasRecords) {
     await transaction((tx) => ensureUserProgressInitialized(tx, userId));
   }
 
-  return findLessonProgresses(userId);
+  const cacheKey = learningDataCacheKey("lesson-progress", userId);
+  const cached =
+    await readLearningDataCache<CachedLessonProgressState>(cacheKey);
+
+  if (cached) {
+    return reviveLessonProgressState(cached);
+  }
+
+  const lessons = await findLessonProgresses(userId);
+  await writeLearningDataCache(cacheKey, lessons);
+  return lessons;
+}
+
+export function getLessonProgressState(userId: string) {
+  return unstable_cache(
+    () => loadLessonProgressState(userId),
+    ["lesson-progress-state", userId],
+    {
+      revalidate: 60,
+      tags: [lessonProgressTag(userId)],
+    },
+  )();
 }
 
 export function getBootstrapLessonKey() {

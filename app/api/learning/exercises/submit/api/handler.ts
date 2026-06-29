@@ -1,9 +1,10 @@
-import { revalidatePath } from "next/cache";
-
 import { getCurrentUser } from "@/lib/auth/session";
 import { AppError, toApiResponse } from "@/lib/errors/app-error";
 import { submitExerciseForUser } from "@/lib/learning/exercise-submit-service";
+import { invalidateChatLearningCaches } from "@/lib/services/chat-service";
 import { submitExerciseSchema } from "@/lib/validation/exercise";
+
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
@@ -34,12 +35,7 @@ export async function POST(req: Request) {
       parsed.data.threadId,
     );
 
-    revalidatePath("/home");
-    revalidatePath("/home/roadmap");
-
-    if (parsed.data.threadId) {
-      revalidatePath(`/home/${parsed.data.threadId}/ai`);
-    }
+    await invalidateChatLearningCaches(user.id);
 
     return Response.json({
       ok: true,

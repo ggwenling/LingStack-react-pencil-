@@ -20,6 +20,8 @@ import {
   createNote,
   createNoteFromMarkdown,
   deleteNote,
+  fetchNoteContent,
+  loadMoreNotes,
   updateNote,
 } from "@/app/home/notes/api/actions";
 import {
@@ -28,7 +30,7 @@ import {
   extractNoteTitle,
   formatNoteRelativeTime,
 } from "@/lib/notes/storage";
-import type { LearningNote, NoteTag } from "@/lib/notes/types";
+import type { LearningNoteSummary, NoteTag } from "@/lib/notes/types";
 import { NOTE_TAGS } from "@/lib/notes/types";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +47,8 @@ const MarkdownContent = dynamic(
 );
 
 type NotesWorkspaceProps = {
-  initialNotes: LearningNote[];
+  initialNotes: LearningNoteSummary[];
+  initialHasMore?: boolean;
   userName?: string | null;
 };
 
@@ -59,28 +62,32 @@ function toggleTag(tags: NoteTag[], tag: NoteTag) {
   return [...tags, tag];
 }
 
-function downloadMarkdown(note: LearningNote, content: string) {
+function downloadMarkdown(title: string, content: string) {
   const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
 
   anchor.href = url;
-  anchor.download = createMarkdownFileName(note.title);
+  anchor.download = createMarkdownFileName(title);
   anchor.click();
   URL.revokeObjectURL(url);
 }
 
-export function NotesWorkspace({ initialNotes, userName }: NotesWorkspaceProps) {
-  const [notes, setNotes] = useState<LearningNote[]>(initialNotes);
-  const [activeId, setActiveId] = useState(initialNotes[0]?.id ?? null);
-  const [draft, setDraft] = useState(initialNotes[0]?.content ?? "");
-  const [draftTags, setDraftTags] = useState<NoteTag[]>(
-    initialNotes[0]?.tags.length ? initialNotes[0].tags : ["REACT"],
-  );
+export function NotesWorkspace({
+  initialNotes,
+  initialHasMore = false,
+  userName,
+}: NotesWorkspaceProps) {
+  const [notes, setNotes] = useState<LearningNoteSummary[]>(initialNotes);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [draftTags, setDraftTags] = useState<NoteTag[]>(["REACT"]);
   const [filter, setFilter] = useState("");
   const [activeTag, setActiveTag] = useState<NoteTag | null>(null);
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [message, setMessage] = useState("");
+  const [listPage, setListPage] = useState(0);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,22 +104,34 @@ export function NotesWorkspace({ initialNotes, userName }: NotesWorkspaceProps) 
       const matchesKeyword =
         !keyword ||
         note.title.toLowerCase().includes(keyword) ||
-        note.excerpt.toLowerCase().includes(keyword) ||
-        note.content.toLowerCase().includes(keyword);
+        note.excerpt.toLowerCase().includes(keyword);
 
       return matchesTag && matchesKeyword;
     });
   }, [notes, filter, activeTag]);
 
-  function openNote(note: LearningNote) {
+  function openNote(note: LearningNoteSummary) {
     setActiveId(note.id);
-    setDraft(note.content);
     setDraftTags(note.tags.length ? note.tags : ["REACT"]);
-    setStatus("saved");
+    setStatus("saving");
     setMessage("");
+
+    startTransition(async () => {
+      const result = await fetchNoteContent(note.id);
+
+      if (!result.ok) {
+        setStatus("error");
+        setMessage(result.message);
+        return;
+      }
+
+      setDraft(result.note.content);
+      setStatus("saved");
+      setMessage("");
+    });
   }
 
-  function syncActiveNote(patch: Partial<LearningNote>) {
+  function syncActiveNote(patch: Partial<LearningNoteSummary>) {
     if (!activeId) {
       return;
     }
@@ -127,18 +146,20 @@ export function NotesWorkspace({ initialNotes, userName }: NotesWorkspaceProps) 
     startTransition(async () => {
       const id = await createNote();
       const now = new Date().toISOString();
-      const nextNote: LearningNote = {
+      const nextNote: LearningNoteSummary = {
         id,
         title: "未命名笔记",
         excerpt: "空白笔记",
-        content: "# 未命名笔记\n\n在这里记录你的学习内容。\n",
         tags: ["REACT"],
         createdAt: now,
         updatedAt: now,
       };
 
       setNotes((current) => [nextNote, ...current]);
-      openNote(nextNote);
+      setDraft("# 未命名笔记\n\n在这里记录你的学习内容。\n");
+      setActiveId(id);
+      setDraftTags(["REACT"]);
+      setStatus("saved");
     });
   }
 
@@ -167,18 +188,20 @@ export function NotesWorkspace({ initialNotes, userName }: NotesWorkspaceProps) 
         content,
         file.name.replace(/\.md$/i, "") || "导入的 Markdown 笔记",
       );
-      const nextNote: LearningNote = {
+      const nextNote: LearningNoteSummary = {
         id: result.id,
         title,
         excerpt: buildExcerpt(content),
-        content,
         tags: ["TYPESCRIPT"],
         createdAt: now,
         updatedAt: now,
       };
 
       setNotes((current) => [nextNote, ...current]);
-      openNote(nextNote);
+      setActiveId(result.id);
+      setDraft(content);
+      setDraftTags(["TYPESCRIPT"]);
+      setStatus("saved");
     });
   }
 
@@ -201,7 +224,6 @@ export function NotesWorkspace({ initialNotes, userName }: NotesWorkspaceProps) 
       syncActiveNote({
         title: result.title,
         excerpt: result.excerpt,
-        content: draft,
         tags: result.tags,
         updatedAt: result.updatedAt,
       });
@@ -231,7 +253,7 @@ export function NotesWorkspace({ initialNotes, userName }: NotesWorkspaceProps) 
         const nextActive = next[0] ?? null;
 
         setActiveId(nextActive?.id ?? null);
-        setDraft(nextActive?.content ?? "");
+        setDraft("");
         setDraftTags(nextActive?.tags.length ? nextActive.tags : ["REACT"]);
         setStatus("saved");
 
@@ -250,6 +272,25 @@ export function NotesWorkspace({ initialNotes, userName }: NotesWorkspaceProps) 
     setDraftTags((current) => toggleTag(current, tag));
     setStatus("dirty");
     setMessage("");
+  }
+
+  function handleLoadMore() {
+    const nextPage = listPage + 1;
+    startTransition(async () => {
+      const result = await loadMoreNotes(nextPage);
+
+      if (!result.ok) {
+        return;
+      }
+
+      setNotes((current) => {
+        const existingIds = new Set(current.map((note) => note.id));
+        const appended = result.notes.filter((note) => !existingIds.has(note.id));
+        return [...current, ...appended];
+      });
+      setListPage(nextPage);
+      setHasMore(result.hasMore);
+    });
   }
 
   const statusLabel =
@@ -301,7 +342,7 @@ export function NotesWorkspace({ initialNotes, userName }: NotesWorkspaceProps) 
           </button>
           <button
             type="button"
-            onClick={() => activeNote && downloadMarkdown(activeNote, draft)}
+            onClick={() => activeNote && downloadMarkdown(activeNote.title, draft)}
             disabled={!activeNote}
             className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-950 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -409,6 +450,16 @@ export function NotesWorkspace({ initialNotes, userName }: NotesWorkspaceProps) 
                 })}
               </ul>
             )}
+            {hasMore ? (
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={isPending}
+                className="mt-3 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                加载更多
+              </button>
+            ) : null}
           </div>
         </aside>
 

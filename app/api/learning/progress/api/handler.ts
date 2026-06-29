@@ -18,26 +18,33 @@ export async function GET() {
 
     const lessons = await getLessonProgressState(user.id);
 
-    return Response.json({
-      ok: true,
-      data: {
-        roadmapSteps: buildRoadmapStepsFromLessons(lessons),
-        dailyTasks: buildDailyTasksFromLessons(lessons),
-        masteredTopics: buildMasteredTopicsFromLessons(lessons),
-        knowledgeProgress: computeKnowledgeProgress(lessons),
-        lessons: lessons.map((lesson) => ({
-          lessonKey: lesson.lessonKey,
-          status: lesson.status,
-          stageKey: lesson.stageKey,
-          exercises: lesson.exercises.map((exercise) => ({
-            id: exercise.id,
-            title: exercise.title,
-            status: exercise.status,
-            templateId: exercise.templateId,
+    return Response.json(
+      {
+        ok: true,
+        data: {
+          roadmapSteps: buildRoadmapStepsFromLessons(lessons),
+          dailyTasks: buildDailyTasksFromLessons(lessons),
+          masteredTopics: buildMasteredTopicsFromLessons(lessons),
+          knowledgeProgress: computeKnowledgeProgress(lessons),
+          lessons: lessons.map((lesson) => ({
+            lessonKey: lesson.lessonKey,
+            status: lesson.status,
+            stageKey: lesson.stageKey,
+            exercises: lesson.exercises.map((exercise) => ({
+              id: exercise.id,
+              title: exercise.title,
+              status: exercise.status,
+              templateId: exercise.templateId,
+            })),
           })),
-        })),
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "private, max-age=30",
+        },
+      },
+    );
   } catch (error) {
     return toApiResponse(error);
   }

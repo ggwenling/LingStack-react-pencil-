@@ -1,7 +1,10 @@
 import { AppError } from "@/lib/errors/app-error";
 import {
+  countNotesForUser,
   createNote as createNoteRecord,
+  DEFAULT_NOTE_PAGE_SIZE,
   deleteNoteForUser,
+  findNoteForUser,
   listNotesForUser,
   updateNoteForUser,
 } from "@/lib/repositories/note-repository";
@@ -10,7 +13,7 @@ import {
   createDefaultNoteContent,
   extractNoteTitle,
 } from "@/lib/notes/storage";
-import type { LearningNote, NoteTag } from "@/lib/notes/types";
+import type { LearningNote, LearningNoteSummary, NoteTag } from "@/lib/notes/types";
 import { noteContentSchema, noteTagsSchema } from "@/lib/validation/notes";
 
 type DbLearningNote = {
@@ -23,15 +26,23 @@ type DbLearningNote = {
   updatedAt: Date;
 };
 
-export function serializeNote(note: DbLearningNote): LearningNote {
+type DbLearningNoteSummary = Omit<DbLearningNote, "content">;
+
+export function serializeNoteSummary(note: DbLearningNoteSummary): LearningNoteSummary {
   return {
     id: note.id,
     title: note.title,
     excerpt: note.excerpt,
-    content: note.content,
     tags: note.tags as NoteTag[],
     createdAt: note.createdAt.toISOString(),
     updatedAt: note.updatedAt.toISOString(),
+  };
+}
+
+export function serializeNote(note: DbLearningNote): LearningNote {
+  return {
+    ...serializeNoteSummary(note),
+    content: note.content,
   };
 }
 
@@ -40,9 +51,40 @@ function normalizeImportedTitle(fileName: string, content: string) {
   return extractNoteTitle(content, name || "导入的 Markdown 笔记");
 }
 
-export async function listLearningNotes(userId: string) {
-  const notes = await listNotesForUser(userId);
-  return notes.map(serializeNote);
+export async function listLearningNoteSummaries(
+  userId: string,
+  options: { skip?: number; take?: number } = {},
+) {
+  const notes = await listNotesForUser(userId, options);
+  return notes.map(serializeNoteSummary);
+}
+
+export async function getLearningNotePage(userId: string, page = 0) {
+  const skip = page * DEFAULT_NOTE_PAGE_SIZE;
+  const [notes, total] = await Promise.all([
+    listLearningNoteSummaries(userId, {
+      skip,
+      take: DEFAULT_NOTE_PAGE_SIZE,
+    }),
+    countNotesForUser(userId),
+  ]);
+
+  return {
+    notes,
+    total,
+    pageSize: DEFAULT_NOTE_PAGE_SIZE,
+    hasMore: skip + notes.length < total,
+  };
+}
+
+export async function getLearningNoteContent(userId: string, id: string) {
+  const note = await findNoteForUser(userId, id);
+
+  if (!note) {
+    throw new AppError("NOT_FOUND", "没有找到这条笔记，或你没有权限查看它。");
+  }
+
+  return serializeNote(note);
 }
 
 export async function createLearningNote(userId: string) {

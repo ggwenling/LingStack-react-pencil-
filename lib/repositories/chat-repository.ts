@@ -196,3 +196,30 @@ export function findRecentMessages(threadId: string, take: number) {
     take,
   });
 }
+
+export async function deleteLastAssistantMessage(threadId: string) {
+  const lastAssistant = await prisma.chatMessage.findFirst({
+    where: {
+      threadId,
+      role: "assistant",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!lastAssistant) {
+    return false;
+  }
+
+  await prisma.chatMessage.delete({
+    where: {
+      id: lastAssistant.id,
+    },
+  });
+
+  return true;
+}
